@@ -126,6 +126,31 @@ MCPX 将多个 MCP 服务器的工具和资源收敛为两个入口点：
 
 工具列表和资源列表在服务器启动时生成描述文本，作为 tool description 暴露给 AI，无需额外的 describe 工具。
 
+### GUI 路由架构
+
+MCPX 在 GUI 模式下使用自定义 ASGI app 而不是 Starlette Router/Mount，原因如下：
+
+**FastMCP 限制：**
+- FastMCP 的 `http_app()` 内部硬编码路由 `Route("/mcp", ...)`
+- 无法通过参数配置内部路由路径
+
+**Starlette Mount 行为：**
+- `Mount("/prefix", app=sub_app)` 会拼接路径
+- 如果子应用定义 `Route("/mcp")`，最终路径变成 `/prefix/mcp`
+
+**解决方案：**
+- 自定义 ASGI app 手动路由分发
+- `/api/*` → Dashboard API（去掉 `/api` 前缀）
+- `/mcp/*` → MCP 端点（直接传递）
+- 其他 → 静态文件/SPA
+
+**Lifespan 处理：**
+- 自定义 ASGI app 需要手动处理 lifespan 事件
+- `combined_lifespan_app` 负责 startup/shutdown 事件分发
+- 包含完整的异常处理和日志记录
+
+**参考：** `src/mcpx/__main__.py:370-450`（详细架构说明注释）
+
 ### 核心类
 
 **ServerManager（服务器管理器）**
