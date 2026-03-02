@@ -227,3 +227,194 @@ async def test_call_validation_returns_tool_schema():
     # TypeScript format: {path: string; mode?: "fast" | "safe"}
     assert "path: string" in call_result["tool_schema"]
     assert "mode?" in call_result["tool_schema"]  # optional field
+
+
+@pytest.mark.asyncio
+async def test_update_tool_descriptions():
+    """测试工具描述动态更新。"""
+    from fastmcp import FastMCP
+
+    from mcpx.description import (
+        update_tool_descriptions,
+    )
+    from mcpx.server import ServerManager, ToolInfo
+
+    # 创建模拟 manager
+    config = ProxyConfig()
+    manager = ServerManager(config)
+    manager._initialized = True
+
+    # 添加模拟工具
+    class DummyPool:
+        pass
+
+    manager._pools["test"] = DummyPool()
+    manager._tools["test:tool1"] = ToolInfo(
+        server_name="test",
+        name="tool1",
+        description="Test tool description",
+        input_schema={"type": "object", "properties": {"path": {"type": "string"}}},
+    )
+
+    # 创建 FastMCP 并添加工具
+    mcp = FastMCP("test")
+
+    @mcp.tool()
+    async def invoke(method: str, arguments: dict | None = None) -> str:
+        """Invoke tool placeholder."""
+        return "ok"
+
+    @mcp.tool()
+    async def read(server_name: str, uri: str) -> str:
+        """Read resource placeholder."""
+        return "ok"
+
+    # 更新描述
+    await update_tool_descriptions(mcp, manager)
+
+    # 验证 invoke 工具描述已更新
+    invoke_tool = await mcp.get_tool("invoke")
+    assert "test.tool1" in invoke_tool.description
+    assert "Available tools:" in invoke_tool.description
+
+    # 验证描述格式符合模板
+    assert "Invoke an MCP tool" in invoke_tool.description
+
+
+@pytest.mark.asyncio
+async def test_update_tool_descriptions_empty_manager():
+    """测试空 manager 时工具描述更新（应显示 "No tools available"）。"""
+    from fastmcp import FastMCP
+
+    from mcpx.description import update_tool_descriptions
+    from mcpx.server import ServerManager
+
+    # 创建空 manager
+    config = ProxyConfig()
+    manager = ServerManager(config)
+    manager._initialized = True
+
+    # 创建 FastMCP 并添加工具
+    mcp = FastMCP("test")
+
+    @mcp.tool()
+    async def invoke(method: str, arguments: dict | None = None) -> str:
+        """Invoke tool placeholder."""
+        return "ok"
+
+    @mcp.tool()
+    async def read(server_name: str, uri: str) -> str:
+        """Read resource placeholder."""
+        return "ok"
+
+    # 更新描述
+    await update_tool_descriptions(mcp, manager)
+
+    # 验证 invoke 工具描述已更新
+    invoke_tool = await mcp.get_tool("invoke")
+    # 空服务器列表时，只有标题没有工具
+    assert "Available tools:" in invoke_tool.description
+
+    # 验证 read 工具描述
+    read_tool = await mcp.get_tool("read")
+    assert "No resources available" in read_tool.description
+
+
+@pytest.mark.asyncio
+async def test_description_templates():
+    """测试描述模板常量格式正确。"""
+    from mcpx.description import (
+        INVOKE_DESCRIPTION_TEMPLATE,
+        READ_DESCRIPTION_TEMPLATE,
+    )
+
+    # 验证模板包含占位符
+    assert "{tools_description}" in INVOKE_DESCRIPTION_TEMPLATE
+    assert "{resources_description}" in READ_DESCRIPTION_TEMPLATE
+
+    # 验证模板包含关键说明
+    assert "server.tool" in INVOKE_DESCRIPTION_TEMPLATE
+    assert "Error Handling" in INVOKE_DESCRIPTION_TEMPLATE
+    assert "server_name" in READ_DESCRIPTION_TEMPLATE
+    assert "uri" in READ_DESCRIPTION_TEMPLATE
+
+
+@pytest.mark.asyncio
+async def test_gui_app_path_routing():
+    """测试自定义 ASGI app 的路径路由逻辑。"""
+    from mcpx.web import create_dashboard_app, SpaStaticFiles
+    from mcpx.config import ProxyConfig
+    from mcpx.config_manager import ConfigManager
+    from mcpx.server import ServerManager
+    from starlette.testclient import TestClient
+
+    # 创建模拟 manager 和 config
+    config = ProxyConfig()
+    manager = ServerManager(config)
+    manager._initialized = True
+    config_manager = ConfigManager(config)
+
+    # 创建 dashboard app
+    dashboard = create_dashboard_app(manager, config_manager)
+
+    # 测试静态文件处理器的 SKIP_PREFIXES
+    assert SpaStaticFiles.SKIP_PREFIXES == ("/mcp", "/api")
+
+    # 测试 API 路由
+    api_client = TestClient(dashboard.api)
+    response = api_client.get("/servers")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_static_files_skip_prefixes():
+    """测试静态文件处理器跳过 /mcp 和 /api 路径。"""
+    from pathlib import Path
+    from mcpx.web import SpaStaticFiles
+
+    # 创建临时目录
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        static_dir = Path(tmpdir)
+
+        # 创建 index.html
+        (static_dir / "index.html").write_text("<html>Test</html>")
+
+        # 创建静态文件处理器
+        static_handler = SpaStaticFiles(static_dir)
+
+        # 测试 /mcp 路径被跳过
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/mcp",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        received = []
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        async def send(message):
+            received.append(message)
+
+        # 调用静态处理器
+        await static_handler(scope, receive, send)
+
+        # 应该没有发送任何响应（跳过了）
+        assert len(received) == 0
+
+        # 测试 /api/test 路径被跳过
+        scope["path"] = "/api/test"
+        received.clear()
+        await static_handler(scope, receive, send)
+        assert len(received) == 0
+
+        # 测试正常静态文件路径不被跳过
+        scope["path"] = "/index.html"
+        received.clear()
+        await static_handler(scope, receive, send)
+        # 应该返回文件内容
+        assert len(received) > 0
+        assert received[0]["type"] == "http.response.start"
