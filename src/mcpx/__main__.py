@@ -15,7 +15,7 @@ from mcp.types import EmbeddedResource, ImageContent, TextContent
 
 from mcpx.config import McpServerConfig, ProxyConfig
 from mcpx.config_manager import ConfigManager
-from mcpx.description import generate_tools_description
+from mcpx.description import generate_tools_description, update_tool_descriptions
 from mcpx.errors import MCPXError, ValidationError
 from mcpx.port_utils import find_available_port
 from mcpx.schema_ts import json_schema_to_typescript
@@ -67,8 +67,6 @@ def _maybe_compress_schema(
 
 def create_server(
     config: ProxyConfig,
-    tools_description: str = "",
-    resources_description: str = "",
     manager: ServerManager | None = None,
     registry: Any = None,  # Backward compatibility
 ) -> FastMCP:
@@ -76,13 +74,15 @@ def create_server(
 
     Args:
         config: Proxy configuration
-        tools_description: Pre-generated description of available tools
-        resources_description: Pre-generated description of available resources
         manager: Optional pre-initialized ServerManager
         registry: Deprecated, use manager instead
 
     Returns:
         FastMCP server instance
+
+    Note:
+        Tool descriptions (invoke/read) are dynamically updated in lifespan
+        after manager initialization. See update_tool_descriptions() in description.py.
     """
     mcp = FastMCP("MCPX")
 
@@ -123,6 +123,8 @@ def create_server(
             - Server not found: returns error + available_servers list
             - Tool not found: returns error + available_tools list
             - Invalid arguments: returns error + tool_schema
+
+        Note: Tool list will be populated after server initialization.
         """
         manager: ServerManager = mcp._manager  # type: ignore[attr-defined]
         config: ProxyConfig = mcp._config  # type: ignore[attr-defined]
@@ -204,6 +206,8 @@ def create_server(
 
         Examples:
             read(server_name="filesystem", uri="file:///tmp/file.txt")
+
+        Note: Resource list will be populated after server initialization.
         """
         manager: ServerManager = mcp._manager  # type: ignore[attr-defined]
 
@@ -314,6 +318,9 @@ def main() -> None:
         logger.info("Initializing MCP server connections...")
         await manager.initialize()
 
+        # 更新工具描述（注入动态工具/资源列表）
+        await update_tool_descriptions(mcp, manager)
+
         tools = manager.list_all_tools()
         resources = manager.list_all_resources()
         logger.info(f"Connected to {len(manager.list_servers())} server(s)")
@@ -322,6 +329,9 @@ def main() -> None:
         # Log available tools for debugging
         tools_desc = generate_tools_description(manager)
         logger.debug(f"Tools description:\n{tools_desc}")
+
+        # 存储 mcp 引用到 app.state（供热重载使用）
+        app.state.mcp = mcp
 
         yield
 
@@ -358,23 +368,85 @@ def main() -> None:
                 yield
 
     # Create routes based on GUI mode
+    # Note: mcp_app has internal route at /mcp, so we mount it at root
+    # to make the MCP endpoint accessible at http://host:port/mcp
     if args.gui:
         from mcpx.web import create_dashboard_app
 
         dashboard = create_dashboard_app(manager, config_manager)
-        routes = [
-            Mount("/api", app=dashboard.api),
-            Mount("/mcp", app=mcp_app),
-            Mount("/", app=dashboard.static),
-        ]
-    else:
-        routes = [Mount("/", app=mcp_app)]
 
-    # Create Starlette app
-    app = Starlette(
-        lifespan=combined_lifespan,
-        routes=routes,
-    )
+        # Build the ASGI app manually for proper routing
+        # We can't use Mount because FastMCP's http_app has internal routing at /mcp
+        async def gui_app(scope: Any, receive: Any, send: Any) -> None:
+            """Composite ASGI app for GUI mode with proper routing."""
+            if scope["type"] == "http":
+                path = scope.get("path", "")
+                if path.startswith("/api"):
+                    # Strip /api prefix for the API app
+                    scope = dict(scope)  # Copy to avoid modifying original
+                    scope["path"] = path[4:] or "/"  # Remove /api prefix
+                    await dashboard.api(scope, receive, send)
+                    return
+                if path.startswith("/mcp"):
+                    await mcp_app(scope, receive, send)
+                    return
+                # Static files and SPA fallback
+                await dashboard.static(scope, receive, send)
+                return
+            elif scope["type"] == "lifespan":
+                # Handle lifespan events
+                await combined_lifespan_app(scope, receive, send)
+                return
+
+        # Create a simple lifespan handler
+        async def combined_lifespan_app(scope: Any, receive: Any, send: Any) -> None:
+            """Handle lifespan events for all sub-apps.
+
+            自定义 ASGI app 架构说明：
+            FastMCP 的 http_app 内部有 /mcp 路由，如果使用 Mount 会导致路径冲突。
+            因此需要手动处理 lifespan 事件分发。
+            """
+            from starlette.datastructures import State
+
+            # Create a mock app for lifespan - type: ignore for compatibility
+            class MockApp:
+                def __init__(self) -> None:
+                    self.state = State()
+
+            mock_app = MockApp()
+
+            try:
+                async with combined_lifespan(mock_app):  # type: ignore[arg-type]
+                    while True:
+                        try:
+                            message = await receive()
+                            if message["type"] == "lifespan.startup":
+                                logger.debug("Lifespan startup initiated")
+                                await send({"type": "lifespan.startup.complete"})
+                                logger.info("Lifespan startup completed")
+                            elif message["type"] == "lifespan.shutdown":
+                                logger.debug("Lifespan shutdown initiated")
+                                await send({"type": "lifespan.shutdown.complete"})
+                                logger.info("Lifespan shutdown completed")
+                                return
+                            elif message["type"] == "lifespan.failure":
+                                logger.error(f"Lifespan failure received: {message}")
+                                return
+                        except Exception as e:
+                            logger.error(f"Error processing lifespan message: {e}", exc_info=True)
+                            await send({"type": "lifespan.failure", "message": str(e)})
+                            raise
+            except Exception as e:
+                logger.error(f"Critical error in lifespan context: {e}", exc_info=True)
+                await send({"type": "lifespan.failure", "message": str(e)})
+
+        app = gui_app
+    else:
+        # Non-GUI mode: just serve MCP
+        app = Starlette(
+            lifespan=combined_lifespan,
+            routes=[Mount("/", app=mcp_app)],
+        )
 
     # Find available port
     actual_port = find_available_port(args.port, host=args.host)
