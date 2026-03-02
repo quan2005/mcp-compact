@@ -11,7 +11,11 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from mcpx.config_manager import ConfigManager
-from mcpx.description import generate_resources_description, generate_tools_description
+from mcpx.description import (
+    generate_resources_description,
+    generate_tools_description,
+    update_tool_descriptions,
+)
 from mcpx.server import ServerManager
 
 logger = logging.getLogger(__name__)
@@ -31,6 +35,17 @@ class APIHandler:
         """
         self._manager = manager
         self._config_manager = config_manager
+
+    async def _update_tool_descriptions(self, request: Request) -> None:
+        """更新工具描述的辅助方法。
+
+        在服务器启停或配置更新后调用，确保 invoke/read 工具描述同步更新。
+
+        Args:
+            request: Starlette 请求对象，用于获取 app.state.mcp
+        """
+        if hasattr(request.app.state, "mcp"):
+            await update_tool_descriptions(request.app.state.mcp, self._manager)
 
     # 服务器相关
 
@@ -143,6 +158,7 @@ class APIHandler:
         # 如果启用，尝试连接
         if new_enabled:
             success = await self._manager.connect_server(name)
+            await self._update_tool_descriptions(request)
             return JSONResponse(
                 {
                     "name": name,
@@ -153,6 +169,7 @@ class APIHandler:
         else:
             # 如果禁用，断开连接
             await self._manager.disconnect_server(name)
+            await self._update_tool_descriptions(request)
             return JSONResponse(
                 {
                     "name": name,
@@ -423,6 +440,9 @@ class APIHandler:
             # 热重载
             await self._manager.reload()
 
+            # 更新工具描述
+            await self._update_tool_descriptions(request)
+
             return JSONResponse(
                 {
                     "success": True,
@@ -445,13 +465,13 @@ class APIHandler:
         # invoke 和 read 工具的 schema 定义
         invoke_schema = {
             "name": "invoke",
-            "description": "Invoke an MCP tool.\n\nArgs:\n    method: Method identifier in \"server.tool\" format\n    arguments: Tool arguments\n\nExample:\n    invoke(method=\"filesystem.read_file\", arguments={\"path\": \"/tmp/file.txt\"})\n\nError Handling:\n    When invoke fails, it returns helpful information:\n    - Server not found: returns error + available_servers list\n    - Tool not found: returns error + available_tools list\n    - Invalid arguments: returns error + tool_schema",
+            "description": 'Invoke an MCP tool.\n\nArgs:\n    method: Method identifier in "server.tool" format\n    arguments: Tool arguments\n\nExample:\n    invoke(method="filesystem.read_file", arguments={"path": "/tmp/file.txt"})\n\nError Handling:\n    When invoke fails, it returns helpful information:\n    - Server not found: returns error + available_servers list\n    - Tool not found: returns error + available_tools list\n    - Invalid arguments: returns error + tool_schema',
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "method": {
                         "type": "string",
-                        "description": "Method identifier in \"server.tool\" format",
+                        "description": 'Method identifier in "server.tool" format',
                     },
                     "arguments": {
                         "type": "object",
@@ -466,7 +486,7 @@ class APIHandler:
 
         read_schema = {
             "name": "read",
-            "description": "Read a resource from MCP servers.\n\nArgs:\n    server_name: Server name (required)\n    uri: Resource URI (required)\n\nReturns:\n    - Text resource: string content\n    - Binary resource: dict with uri, mime_type, and blob (base64)\n    - Multiple contents: list of content items\n\nExamples:\n    read(server_name=\"filesystem\", uri=\"file:///tmp/file.txt\")",
+            "description": 'Read a resource from MCP servers.\n\nArgs:\n    server_name: Server name (required)\n    uri: Resource URI (required)\n\nReturns:\n    - Text resource: string content\n    - Binary resource: dict with uri, mime_type, and blob (base64)\n    - Multiple contents: list of content items\n\nExamples:\n    read(server_name="filesystem", uri="file:///tmp/file.txt")',
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -484,11 +504,13 @@ class APIHandler:
             "dynamic_description": resources_desc,  # 动态生成的资源列表
         }
 
-        return JSONResponse({
-            "tools": [invoke_schema, read_schema],
-            "tools_description": tools_desc,
-            "resources_description": resources_desc,
-        })
+        return JSONResponse(
+            {
+                "tools": [invoke_schema, read_schema],
+                "tools_description": tools_desc,
+                "resources_description": resources_desc,
+            }
+        )
 
 
 def create_api_routes(manager: ServerManager, config_manager: ConfigManager) -> list[Route]:

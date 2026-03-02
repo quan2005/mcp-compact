@@ -342,11 +342,12 @@ async def test_description_templates():
 @pytest.mark.asyncio
 async def test_gui_app_path_routing():
     """测试自定义 ASGI app 的路径路由逻辑。"""
-    from mcpx.web import create_dashboard_app, SpaStaticFiles
+    from starlette.testclient import TestClient
+
     from mcpx.config import ProxyConfig
     from mcpx.config_manager import ConfigManager
     from mcpx.server import ServerManager
-    from starlette.testclient import TestClient
+    from mcpx.web import SpaStaticFiles, create_dashboard_app
 
     # 创建模拟 manager 和 config
     config = ProxyConfig()
@@ -369,11 +370,12 @@ async def test_gui_app_path_routing():
 @pytest.mark.asyncio
 async def test_static_files_skip_prefixes():
     """测试静态文件处理器跳过 /mcp 和 /api 路径。"""
-    from pathlib import Path
-    from mcpx.web import SpaStaticFiles
-
     # 创建临时目录
     import tempfile
+    from pathlib import Path
+
+    from mcpx.web import SpaStaticFiles
+
     with tempfile.TemporaryDirectory() as tmpdir:
         static_dir = Path(tmpdir)
 
@@ -393,6 +395,7 @@ async def test_static_files_skip_prefixes():
         }
 
         received = []
+
         async def receive():
             return {"type": "http.request", "body": b""}
 

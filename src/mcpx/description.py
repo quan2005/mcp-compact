@@ -8,10 +8,55 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from fastmcp import FastMCP
+
     from mcpx.server import ServerManager
 
 
-__all__ = ["generate_tools_description", "generate_resources_description"]
+__all__ = [
+    "generate_tools_description",
+    "generate_resources_description",
+    "update_tool_descriptions",
+    "INVOKE_DESCRIPTION_TEMPLATE",
+    "READ_DESCRIPTION_TEMPLATE",
+]
+
+
+# 描述模板常量 - 在 lifespan 中动态填充工具/资源列表
+INVOKE_DESCRIPTION_TEMPLATE = """Invoke an MCP tool.
+
+Args:
+    method: Method identifier in "server.tool" format
+    arguments: Tool arguments
+
+Example:
+    invoke(method="filesystem.read_file", arguments={{"path": "/tmp/file.txt"}})
+
+Error Handling:
+    When invoke fails, it returns helpful information:
+    - Server not found: returns error + available_servers list
+    - Tool not found: returns error + available_tools list
+    - Invalid arguments: returns error + tool_schema
+
+{tools_description}
+"""
+
+READ_DESCRIPTION_TEMPLATE = """Read a resource from MCP servers.
+
+Args:
+    server_name: Server name (required)
+    uri: Resource URI (required)
+
+Returns:
+    - Text resource: string content
+    - Binary resource: dict with uri, mime_type, and blob (base64)
+    - Multiple contents: list of content items
+
+Examples:
+    read(server_name="filesystem", uri="file:///tmp/file.txt")
+
+{resources_description}
+"""
 
 
 def generate_tools_description(manager: "ServerManager") -> str:
@@ -103,3 +148,38 @@ def generate_resources_description(manager: "ServerManager") -> str:
         if len(resources_desc_lines) > 1
         else "No resources available."
     )
+
+
+async def update_tool_descriptions(mcp: "FastMCP", manager: "ServerManager") -> None:
+    """更新 invoke 和 read 工具的动态描述。
+
+    在 manager 初始化后调用，将动态工具/资源列表注入到工具描述中。
+
+    Args:
+        mcp: FastMCP 服务器实例
+        manager: 已初始化的 ServerManager
+    """
+    from fastmcp.exceptions import NotFoundError
+
+    tools_desc = generate_tools_description(manager)
+    resources_desc = generate_resources_description(manager)
+
+    # 更新 invoke 工具描述
+    try:
+        invoke_tool = await mcp.get_tool("invoke")
+        if invoke_tool is not None:
+            invoke_tool.description = INVOKE_DESCRIPTION_TEMPLATE.format(
+                tools_description=tools_desc
+            )
+    except NotFoundError:
+        pass  # 工具不存在，忽略
+
+    # 更新 read 工具描述
+    try:
+        read_tool = await mcp.get_tool("read")
+        if read_tool is not None:
+            read_tool.description = READ_DESCRIPTION_TEMPLATE.format(
+                resources_description=resources_desc
+            )
+    except NotFoundError:
+        pass  # 工具不存在，忽略

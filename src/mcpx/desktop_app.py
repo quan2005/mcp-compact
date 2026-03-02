@@ -28,20 +28,19 @@ def main() -> None:
     """Desktop App 入口。"""
     import json
     from contextlib import asynccontextmanager
-    from typing import Any, AsyncGenerator
+    from typing import AsyncGenerator
 
     import uvicorn
-    from fastmcp import FastMCP
     from starlette.applications import Starlette
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
     from starlette.routing import Mount
 
+    from mcpx.__main__ import create_server
     from mcpx.config_manager import ConfigManager
+    from mcpx.port_utils import find_available_port
     from mcpx.server import ServerManager
     from mcpx.web import create_dashboard_app
-    from mcpx.__main__ import create_server
-    from mcpx.port_utils import find_available_port
 
     # 查找配置文件
     config_paths = [

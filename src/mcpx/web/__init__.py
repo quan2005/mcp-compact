@@ -23,6 +23,9 @@ __all__ = ["SpaStaticFiles", "create_dashboard_app", "DashboardApp"]
 class SpaStaticFiles:
     """SPA 静态文件处理器，支持前端路由回退。"""
 
+    # 不处理的路径前缀（交给其他路由处理）
+    SKIP_PREFIXES = ("/mcp", "/api")
+
     def __init__(self, directory: Path) -> None:
         """初始化静态文件处理器。
 
@@ -36,12 +39,19 @@ class SpaStaticFiles:
         """处理请求。
 
         静态文件存在则返回，否则回退到 index.html（SPA 路由）。
+        注意：/mcp 和 /api 路径不处理，交给其他路由。
         """
         if scope["type"] != "http":
             return
 
         request = Request(scope, receive)
-        path = request.url.path.lstrip("/")
+        path = request.url.path
+
+        # 跳过 API 和 MCP 路径
+        if path.startswith(self.SKIP_PREFIXES):
+            return
+
+        path = path.lstrip("/")
 
         # 安全路径检查
         if ".." in path:
