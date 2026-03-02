@@ -368,6 +368,41 @@ def main() -> None:
                 yield
 
     # Create routes based on GUI mode
+
+    # ==================== 架构设计说明 ====================
+    #
+    # 为什么使用自定义 ASGI app 而不是 Starlette Router/Mount？
+    #
+    # 1. FastMCP 限制：
+    #    - FastMCP 的 http_app() 返回的 Starlette 应用内部硬编码路由
+    #    - 路由路径为 Route("/mcp", ...)，无法通过参数配置
+    #
+    # 2. Starlette Mount 行为：
+    #    - Mount("/prefix", app=sub_app) 会拼接路径
+    #    - 如果 sub_app 定义 Route("/mcp")，最终路径变成 "/prefix/mcp"
+    #    - 这会导致 MCP 端点变成 "/mcp/mcp"，与需求不符
+    #
+    # 3. 需求冲突：
+    #    - MCP 端点必须在 http://host:port/mcp（FastMCP 内部路由）
+    #    - Dashboard API 必须在 http://host:port/api/...（REST API）
+    #    - 静态文件必须在 http://host:port/...（SPA）
+    #
+    # 4. 唯一可行方案：
+    #    - 自定义 ASGI app 手动检查 path 并分发到不同的子应用
+    #    - /api/* → dashboard.api（去掉 /api 前缀）
+    #    - /mcp/* → mcp_app（直接传递，保留 /mcp）
+    #    - 其他 → dashboard.static（SPA 静态文件）
+    #
+    # 5. Lifespan 处理：
+    #    - 自定义 ASGI app 需要手动处理 lifespan 事件
+    #    - combined_lifespan_app 负责 startup/shutdown 事件分发
+    #
+    # 参考：
+    # - FastMCP 源码：fastmcp/server/http.py:create_streamable_http_app
+    # - Starlette 文档：https://www.starlette.io/routing/
+    #
+    # ====================================================
+
     # Note: mcp_app has internal route at /mcp, so we mount it at root
     # to make the MCP endpoint accessible at http://host:port/mcp
     if args.gui:
