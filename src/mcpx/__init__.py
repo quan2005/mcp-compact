@@ -1,37 +1,45 @@
-"""MCPX - MCP proxy server."""
+"""MCPX 2.1 public API."""
 
 from __future__ import annotations
 
-from mcpx.config import McpServerConfig, ProxyConfig
-from mcpx.content import ContentType, detect_content_type, is_multimodal_content
-from mcpx.errors import (
-    ExecutionError,
-    MCPXError,
-    ResourceNotFoundError,
-    ServerNotFoundError,
-    ToolNotFoundError,
-    ValidationError,
+from mcpx.__main__ import (
+    McpServerConfig,
+    MCPXRuntime,
+    ProxyConfig,
+    create_http_app,
+    create_native_server,
+    create_projection_server,
+    create_server,
+    load_config,
 )
-from mcpx.server import ResourceInfo, ServerInfo, ServerManager, ToolInfo
+from mcpx.catalog import (
+    PromptRecord,
+    ResourceRecord,
+    ResourceTemplateRecord,
+    ServerCapabilitiesRecord,
+    ServerCatalog,
+    ToolRecord,
+)
+from mcpx.snapshot import CatalogSnapshot
+from mcpx.upstreams import DiscoveryHub, ExecutionPools, RefreshCoordinator
 
 __all__ = [
-    # Config
+    "CatalogSnapshot",
+    "DiscoveryHub",
+    "ExecutionPools",
+    "MCPXRuntime",
     "McpServerConfig",
+    "PromptRecord",
     "ProxyConfig",
-    # Content
-    "ContentType",
-    "is_multimodal_content",
-    "detect_content_type",
-    # Errors
-    "MCPXError",
-    "ServerNotFoundError",
-    "ToolNotFoundError",
-    "ValidationError",
-    "ResourceNotFoundError",
-    "ExecutionError",
-    # Server
-    "ServerManager",
-    "ServerInfo",
-    "ToolInfo",
-    "ResourceInfo",
+    "RefreshCoordinator",
+    "ResourceRecord",
+    "ResourceTemplateRecord",
+    "ServerCapabilitiesRecord",
+    "ServerCatalog",
+    "ToolRecord",
+    "create_http_app",
+    "create_native_server",
+    "create_projection_server",
+    "create_server",
+    "load_config",
 ]

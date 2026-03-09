@@ -34,7 +34,7 @@ class McpServerConfig(BaseModel):
     url: str | None = None
     headers: dict[str, str] | None = None
 
-    # enabled state for dashboard
+    # Server-level enable switch used during runtime initialization.
     enabled: bool = True
 
     def validate_for_server(self, server_name: str) -> None:
@@ -62,24 +62,21 @@ class ProxyConfig(BaseModel):
         default_factory=dict
     )
 
-    # Health check configuration
+    # Legacy operational settings retained for compatibility. The 2.0 runtime
+    # does not currently consume them directly, but existing config files may
+    # still include them.
     health_check_enabled: bool = True
     health_check_interval: int = 30  # seconds
     health_check_timeout: int = 5  # seconds
     health_check_failure_threshold: int = 2  # consecutive failures
 
-    # TOON compression configuration
     toon_compression_enabled: bool = True
     toon_compression_min_size: int = 1  # minimum items/keys to compress
 
-    # Schema compression configuration (TypeScript style)
     schema_compression_enabled: bool = True
 
-    # Structured content configuration
-    # If False, tools return only content (without structured_content)
     include_structured_content: bool = False
 
-    # Dashboard configuration
-    disabled_tools: list[str] = Field(default_factory=list)  # format: "server.tool"
+    disabled_tools: list[str] = Field(default_factory=list)  # legacy 1.x format: "server.tool"
 
     model_config = {"extra": "ignore"}
