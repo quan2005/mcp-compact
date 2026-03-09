@@ -9,8 +9,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 
 from fastmcp import Client
-from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
-from fastmcp.mcp_config import infer_transport_type_from_url
+from fastmcp.client.transports import StdioTransport
 
 from mcp_compact.catalog import (
     ServerCatalog,
@@ -190,22 +189,7 @@ class UpstreamRegistry:
 
             return build_override
 
-        if server_config.type == "http":
-            assert server_config.url is not None, "HTTP type requires url"
-            server_url = server_config.url
-            if infer_transport_type_from_url(server_url) == "sse":
-                return lambda: Client(
-                    SSETransport(url=server_url, headers=server_config.headers or {}),
-                    auto_initialize=True,
-                )
-            return lambda: Client(
-                StreamableHttpTransport(
-                    url=server_url,
-                    headers=server_config.headers or {},
-                ),
-                auto_initialize=True,
-            )
-
+        assert server_config.type == "stdio", "Only stdio transport is supported"
         assert server_config.command is not None, "stdio type requires command"
         command = server_config.command
         return lambda: Client(

@@ -9,8 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import uvicorn
-
 from mcp_compact.config import McpServerConfig, ProxyConfig
 from mcp_compact.projection import ProjectionSurface
 from mcp_compact.runtime import MCPCompactRuntime
@@ -21,7 +19,6 @@ __all__ = [
     "McpServerConfig",
     "ProxyConfig",
     "MCPCompactRuntime",
-    "create_http_app",
     "create_projection_server",
     "load_config",
     "main",
@@ -70,30 +67,17 @@ def create_projection_server(
     return surface.server
 
 
-def create_http_app(
-    config: ProxyConfig,
-    *,
-    runtime: MCPCompactRuntime | None = None,
-) -> Any:
-    """Create the projection ASGI app on `/mcp`."""
-    active_runtime = runtime or MCPCompactRuntime(config)
-    projection = create_projection_server(config, runtime=active_runtime)
-    return projection.http_app(path="/mcp")
-
-
 def main() -> None:
     """CLI entrypoint."""
-    parser = argparse.ArgumentParser(description="MCP Compact projection runtime")
+    parser = argparse.ArgumentParser(description="MCP Compact stdio runtime")
     parser.add_argument("config", type=Path, help="Path to a config file")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
 
     config = load_config(args.config)
-    app = create_http_app(config)
-    uvicorn.run(app, host=args.host, port=args.port)
+    server = create_projection_server(config)
+    server.run(transport="stdio")
 
 
 if __name__ == "__main__":

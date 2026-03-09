@@ -15,10 +15,8 @@ class McpServerConfig(BaseModel):
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] | None = None
 
-    url: str | None = None
-    headers: dict[str, str] | None = None
-
     enabled: bool = True
+    model_config = {"extra": "forbid"}
 
     def validate_for_server(self, server_name: str) -> None:
         """Validate that required fields are present based on type.
@@ -26,16 +24,12 @@ class McpServerConfig(BaseModel):
         Args:
             server_name: The server name (used for error messages).
         """
-        if self.type == "stdio":
-            if not self.command:
-                raise ValueError(f"Server '{server_name}': stdio type requires 'command' field")
-        elif self.type == "http":
-            if not self.url:
-                raise ValueError(f"Server '{server_name}': http type requires 'url' field")
-        else:
+        if self.type != "stdio":
             raise ValueError(
-                f"Server '{server_name}': unknown type '{self.type}', must be 'stdio' or 'http'"
+                f"Server '{server_name}': mcp-compact only supports 'stdio' transport"
             )
+        if not self.command:
+            raise ValueError(f"Server '{server_name}': stdio type requires 'command' field")
 
 
 class ProxyConfig(BaseModel):

@@ -1,10 +1,10 @@
 # MCP Compact
 
-MCP Compact aggregates multiple upstream MCP servers into one runtime with a single compact surface.
+MCP Compact aggregates multiple upstream MCP servers into one stdio-only runtime with a single compact surface.
 
 ## What It Is
 
-MCP Compact serves a single agent-facing MCP endpoint that exposes only `invoke` and `read`.
+MCP Compact runs as one MCP server over `stdio` and exposes only `invoke` and `read`.
 
 ## Run
 
@@ -12,13 +12,14 @@ MCP Compact serves a single agent-facing MCP endpoint that exposes only `invoke`
 uv run mcp-compact config.example.json
 ```
 
+The process speaks MCP on stdin/stdout. It does not expose HTTP or `/mcp`.
+
 ## Config
 
 ```json
 {
   "mcpServers": {
     "filesystem": {
-      "type": "stdio",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
     }
@@ -26,9 +27,7 @@ uv run mcp-compact config.example.json
 }
 ```
 
-## Surface
-
-- `/mcp` exposes only `invoke` and `read`
+All upstreams must use `stdio`.
 
 ## Test
 

@@ -17,6 +17,7 @@ from mcp_compact.__main__ import (
     McpServerConfig,
     ProxyConfig,
     create_projection_server,
+    load_config,
 )
 
 _URL_ADAPTER = TypeAdapter(AnyUrl)
@@ -201,6 +202,34 @@ async def _build_runtime(states: dict[str, FakeUpstreamState]) -> MCPCompactRunt
     )
     await runtime.initialize()
     return runtime
+
+
+def test_stdio_is_the_only_supported_upstream_transport() -> None:
+    config = McpServerConfig(type="http", command="ignored")
+
+    with pytest.raises(ValueError, match="only supports 'stdio'"):
+        config.validate_for_server("notes")
+
+
+def test_load_config_defaults_upstreams_to_stdio(tmp_path: Any) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "notes": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.mcpServers["notes"].type == "stdio"
 
 
 @pytest.mark.asyncio
