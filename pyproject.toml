@@ -1,33 +1,24 @@
 [project]
-name = "mcpx-toolkit"
+name = "mcp-compact"
 version = "0.6.0"
-description = "Dual-surface MCP aggregation runtime with native and projection endpoints"
+description = "Compact single-surface MCP runtime with invoke/read projection"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp>=3.0.0b1",
     "pydantic>=2.12.0",
-    "toons>=0.4.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=9.0.0",
-    "pytest-asyncio>=1.3.0",
-    "pytest-cov>=7.0.0",
-    "ruff>=0.14.0",
-    "mypy>=1.19.0",
+    "uvicorn>=0.38.0",
 ]
 
 [project.scripts]
-mcpx-toolkit = "mcpx.__main__:main"
+mcp-compact = "mcp_compact.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcpx"]
+packages = ["src/mcp_compact"]
 
 [tool.hatch.build.targets.wheel.sources]
 src = ""
@@ -46,15 +37,10 @@ strict = true
 warn_return_any = true
 warn_unused_ignores = true
 
-[[tool.mypy.overrides]]
-module = "toons"
-ignore_missing_imports = true
-
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
-    "pytest-cov>=7.0.0",
     "ruff>=0.14.14",
 ]
